@@ -19,7 +19,7 @@
 - [Quick Start](#quick-start)
 - [Technical Deep Dive](#technical-deep-dive)
 - [Roadmap](#roadmap)
-- [Citation](#citation)
+- [Citation](#citation) 
 
 ---
 
