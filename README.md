@@ -10,6 +10,14 @@
 
 ### Intent-Based Runtime Security for Autonomous AI Agents
 
+<p align="center">
+  <img src="https://img.shields.io/badge/Kernel-eBPF%20%2F%20LSM-orange?style=for-the-badge&logo=linux" />
+  <img src="https://img.shields.io/badge/AI-Cortex%20Engine-blueviolet?style=for-the-badge&logo=openai" />
+  <img src="https://img.shields.io/badge/XDP-Hyperion%20Bridge-00b894?style=for-the-badge&logo=fastify" />
+  <img src="https://img.shields.io/badge/Version-1.0-blue?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" />
+</p>
+
 Telos is a Linux kernel-level security runtime that enforces AI agent behavior through **Natural Language Intent Declarations**, **eBPF/LSM syscall gates**, and **real-time Information Flow Control**. Instead of writing static YAML rules, security policies are dynamically generated from what programs _say_ they intend to do.
 
 ---
