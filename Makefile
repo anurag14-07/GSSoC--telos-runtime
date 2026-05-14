@@ -26,7 +26,7 @@ PYTHON := python3
 # BPF compilation flags
 BPF_CFLAGS := -O2 -g -target bpf
 BPF_CFLAGS += -D__TARGET_ARCH_x86
-BPF_CFLAGS += -Wall -Werror
+BPF_CFLAGS += -Wall -Werror -Wno-missing-declarations
 
 # Kernel headers for vmlinux.h
 # Generate with: bpftool btf dump file /sys/kernel/btf/vmlinux format c > vmlinux.h

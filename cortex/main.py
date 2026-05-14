@@ -398,7 +398,7 @@ class CortexServer:
         protocol_pb2_grpc.add_TelosControlServicer_to_server(service, self.server)
         
         # Bind to port
-        address = f'[::]:{self.port}'
+        address = f'0.0.0.0:{self.port}'
         self.server.add_insecure_port(address)
         
         # Start

@@ -483,7 +483,7 @@ func (d *TelosDaemon) startSocketServer() error {
 	d.listener = listener
 
 	// Set socket permissions
-	os.Chmod(d.socketPath, 0660)
+	os.Chmod(d.socketPath, 0666)
 
 	// [Phase 11: Heartbeat Watchdog]
 	go d.watchdogRoutine()

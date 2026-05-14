@@ -11,7 +11,7 @@ protobuf>=4.25.0
 PyYAML>=6.0.1
 
 # Utilities (optional but recommended)
-
+rich
 # DNS Interception
 dnslib
 

@@ -5,7 +5,7 @@ import subprocess
 import grpc
 from shared import protocol_pb2, protocol_pb2_grpc
 
-CORTEX_ADDR = '127.0.0.1:50051'
+CORTEX_ADDR = '127.0.0.1:50052'
 
 def run():
     pid = os.getpid()
