@@ -187,6 +187,26 @@ sudo telos stop     # Gracefully stop all components
 telos help          # Display help
 ```
 
+### Web Telemetry Dashboard
+
+```bash
+python3 web_dashboard.py
+# Open http://127.0.0.1:8088
+
+# Optional: require a local bearer token
+TELOS_DASH_TOKEN=change-me python3 web_dashboard.py
+# Open http://127.0.0.1:8088/?token=change-me
+
+# Binding beyond localhost requires TELOS_DASH_TOKEN
+TELOS_DASH_TOKEN=change-me python3 web_dashboard.py --host 0.0.0.0
+```
+
+The web dashboard reuses the existing BPF event stream at `/var/run/telos_events.sock`,
+Cortex logs at `/tmp/telos_cortex.log`, and Prometheus metrics on `:9094/metrics`.
+When auth is enabled, the initial `?token=` URL is exchanged for an HttpOnly cookie.
+Binding beyond localhost uses plain HTTP, so only use it on trusted local networks
+or behind a TLS-terminating reverse proxy.
+
 ---
 
 ## Demonstrations

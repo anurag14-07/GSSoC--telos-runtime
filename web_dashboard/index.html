@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Telos Telemetry</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #111318;
+      color: #f3f6fb;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #111318;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 20px 28px;
+      border-bottom: 1px solid #242a34;
+      background: #161a21;
+    }
+
+    h1, h2 {
+      margin: 0;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+    }
+
+    h2 {
+      font-size: 16px;
+      font-weight: 650;
+    }
+
+    main {
+      display: grid;
+      gap: 20px;
+      padding: 20px 28px 28px;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .stat, section {
+      border: 1px solid #242a34;
+      border-radius: 8px;
+      background: #171c24;
+    }
+
+    .stat {
+      padding: 14px;
+    }
+
+    .label {
+      color: #9da8b7;
+      font-size: 12px;
+    }
+
+    .value {
+      display: block;
+      margin-top: 6px;
+      font-size: 26px;
+      font-weight: 750;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 20px;
+    }
+
+    section {
+      min-height: 420px;
+      overflow: hidden;
+    }
+
+    section header {
+      padding: 14px 16px;
+      background: #1b2029;
+    }
+
+    .events {
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+      max-height: 520px;
+      overflow: auto;
+    }
+
+    .event {
+      padding: 10px 12px;
+      border: 1px solid #2b3340;
+      border-radius: 8px;
+      background: #12161d;
+    }
+
+    .meta {
+      color: #9da8b7;
+      font-size: 12px;
+    }
+
+    .message {
+      margin-top: 4px;
+      overflow-wrap: anywhere;
+    }
+
+    .empty {
+      color: #9da8b7;
+      padding: 18px;
+    }
+
+    .denied {
+      border-color: #8c3d44;
+    }
+
+    .approved {
+      border-color: #3d7b5b;
+    }
+
+    @media (max-width: 900px) {
+      .stats, .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Telos Telemetry</h1>
+    <span id="status" class="label">Connecting...</span>
+  </header>
+
+  <main>
+    <div class="stats">
+      <div class="stat"><span class="label">BPF Blocks</span><span id="denied" class="value">0</span></div>
+      <div class="stat"><span class="label">Taint Elevations</span><span id="elevated" class="value">0</span></div>
+      <div class="stat"><span class="label">Allowed Intents</span><span id="allowed" class="value">0</span></div>
+      <div class="stat"><span class="label">Active Drawbridges</span><span id="drawbridges" class="value">0</span></div>
+    </div>
+
+    <div class="grid">
+      <section>
+        <header><h2>Cortex Intents</h2></header>
+        <div id="intents" class="events"><div class="empty">No intent events yet.</div></div>
+      </section>
+
+      <section>
+        <header><h2>eBPF Enforcement</h2></header>
+        <div id="bpf" class="events"><div class="empty">No kernel events yet.</div></div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const denied = document.getElementById('denied');
+    const elevated = document.getElementById('elevated');
+    const allowed = document.getElementById('allowed');
+    const drawbridges = document.getElementById('drawbridges');
+    const status = document.getElementById('status');
+    const intents = document.getElementById('intents');
+    const bpf = document.getElementById('bpf');
+
+    function escapeText(value) {
+      return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      })[char]);
+    }
+
+    function renderEvents(container, events, formatter) {
+      if (!events || events.length === 0) {
+        container.innerHTML = '<div class="empty">No events yet.</div>';
+        return;
+      }
+      container.innerHTML = events.map(formatter).join('');
+    }
+
+    function render(data) {
+      const stats = data.stats || {};
+      denied.textContent = stats.denied || 0;
+      elevated.textContent = stats.elevated || 0;
+      allowed.textContent = stats.allowed || 0;
+      if (data.bridge_errors && data.bridge_errors.length > 0) {
+        status.textContent = data.bridge_errors[0].message;
+      }
+
+      renderEvents(intents, data.intent_events, (event) => `
+        <div class="event ${event.type === 'denied' ? 'denied' : event.type === 'approved' ? 'approved' : ''}">
+          <div class="meta">${escapeText(event.time)} · ${escapeText(event.type)}</div>
+          <div class="message">${escapeText(event.message)}</div>
+        </div>
+      `);
+
+      renderEvents(bpf, data.bpf_events, (event) => `
+        <div class="event ${event.blocked ? 'denied' : ''}">
+          <div class="meta">${escapeText(event.time)} · PID ${escapeText(event.pid)} · Taint ${escapeText(event.taint_level)}</div>
+          <div class="message">${escapeText(event.action)} ${event.comm ? '· ' + escapeText(event.comm) : ''}</div>
+        </div>
+      `);
+    }
+
+    async function refreshMetrics() {
+      try {
+        const response = await fetch('/api/metrics');
+        if (!response.ok) return;
+        const data = await response.json();
+        drawbridges.textContent = data.metrics?.telos_active_drawbridges || 0;
+      } catch (error) {
+        drawbridges.textContent = '0';
+      }
+    }
+
+    const source = new EventSource('/api/events');
+    source.onopen = () => {
+      status.textContent = 'Live';
+    };
+    source.onmessage = (event) => {
+      render(JSON.parse(event.data));
+    };
+    source.onerror = () => {
+      status.textContent = 'Reconnecting...';
+    };
+
+    refreshMetrics();
+    setInterval(refreshMetrics, 5000);
+  </script>
+</body>
+</html>
