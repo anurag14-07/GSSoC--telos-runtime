@@ -21,19 +21,20 @@ from concurrent import futures
 from typing import Dict, Optional
 
 import grpc
-import grpc
 import yaml
 import glob  # [NEW] For resolving wildcards
 import stat  # [NEW] For file stats
 import threading
 import socket
 import struct
+import tempfile
 
 
 # Add parent directory for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from shared import protocol_pb2, protocol_pb2_grpc
+from cortex.auth import CortexAuthInterceptor, get_auth_token
 from cortex.guardian import Guardian
 from cortex.unix_socket import CoreIPCClient
 from cortex.verifier import IntentVerifier
@@ -43,6 +44,7 @@ from cortex.mirage_manager import MirageManager # [PHASE 4]
 # === CONFIGURATION ===
 
 DEFAULT_PORT = 50051
+DEFAULT_BIND_HOST = '127.0.0.1'
 DEFAULT_SOCKET = '/var/run/telos.sock'
 MAX_WORKERS = 10
 RATE_LIMIT_RPS = 5      # Max requests per second per agent PID
@@ -50,12 +52,18 @@ RATE_LIMIT_BURST = 10   # Burst capacity per PID
 
 # === LOGGING ===
 
+LOG_PATH = os.getenv(
+    'TELOS_CORTEX_LOG',
+    os.path.join(tempfile.gettempdir(), 'telos_cortex.log')
+)
+os.makedirs(os.path.dirname(LOG_PATH) or '.', exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler('/tmp/telos_cortex.log')
+        logging.FileHandler(LOG_PATH)
     ]
 )
 log = logging.getLogger('telos.cortex')
@@ -110,6 +118,19 @@ class RateLimiter:
                 self._buckets[pid] = _TokenBucket(self._rate, self._burst)
             return self._buckets[pid].consume()
 
+
+def _pid_exists(pid: int) -> bool:
+    """Return True when *pid* is a positive, live Linux process ID."""
+    return pid > 0 and os.path.isdir(f"/proc/{pid}")
+
+
+def _context_abort(context: grpc.ServicerContext, code: grpc.StatusCode, message: str) -> None:
+    """Abort the current RPC, with a fallback for direct unit-test contexts."""
+    abort = getattr(context, "abort", None)
+    if callable(abort):
+        abort(code, message)
+    raise ValueError(message)
+
 # === GRPC SERVICE IMPLEMENTATION ===
 
 class TelosControlService(protocol_pb2_grpc.TelosControlServicer):
@@ -124,6 +145,38 @@ class TelosControlService(protocol_pb2_grpc.TelosControlServicer):
         self.dns = dns_proxy # [NEW]
         self.rate_limiter = RateLimiter()
         log.info("TelosControlService initialized")
+
+    def _validate_pid(
+        self,
+        pid: int,
+        context: grpc.ServicerContext,
+        action: str,
+    ) -> None:
+        """Reject policy mutations for missing, forged, or dead process IDs."""
+        if not _pid_exists(pid):
+            _context_abort(
+                context,
+                grpc.StatusCode.INVALID_ARGUMENT,
+                f"{action} rejected: PID {pid} does not exist under /proc",
+            )
+
+    def _validate_session_binding(
+        self,
+        session_id: str,
+        pid: int,
+        context: grpc.ServicerContext,
+    ) -> None:
+        """Reject attempts to reuse a session ID for a different PID."""
+        if not session_id:
+            return
+
+        mapped_pid = self.guardian.session_map.get(session_id)
+        if mapped_pid is not None and mapped_pid != pid:
+            _context_abort(
+                context,
+                grpc.StatusCode.PERMISSION_DENIED,
+                f"session {session_id!r} is already bound to PID {mapped_pid}",
+            )
     
     def ReportTaint(self, request: protocol_pb2.TaintReport, 
                     context: grpc.ServicerContext) -> protocol_pb2.Ack:
@@ -140,6 +193,9 @@ class TelosControlService(protocol_pb2_grpc.TelosControlServicer):
         log.debug(f"    Source: {request.source_id}, Preview: {request.payload_preview[:32]}...")
         
         try:
+            if request.pid:
+                self._validate_pid(request.pid, context, "ReportTaint")
+
             # 1. Update Guardian state
             self.guardian.update_taint(
                 request.source_id,
@@ -186,6 +242,9 @@ class TelosControlService(protocol_pb2_grpc.TelosControlServicer):
         Currently: Allow all intents, log for audit.
         """
         log.info(f"[Intent] Agent {request.agent_pid}: {request.natural_language_goal}")
+
+        self._validate_pid(request.agent_pid, context, "DeclareIntent")
+        self._validate_session_binding(request.session_id, request.agent_pid, context)
 
         # Rate limit check — protect against DoS via intent flooding
         if not self.rate_limiter.allow(request.agent_pid):
@@ -291,6 +350,7 @@ class TelosControlService(protocol_pb2_grpc.TelosControlServicer):
         Used by daemons to sync state. Also registers the agent for tracking.
         """
         log.debug(f"[Policy] Query from PID {request.pid}")
+        self._validate_pid(request.pid, context, "GetPolicy")
         
         # [NEW] Register agent for eBPF tracking
         self.guardian.register_agent(request.pid)
@@ -316,8 +376,17 @@ class CortexServer:
     Manages the gRPC server lifecycle and IPC connections.
     """
     
-    def __init__(self, port: int, socket_path: str, policy_path: str):
+    def __init__(
+        self,
+        port: int,
+        socket_path: str,
+        policy_path: str,
+        bind_host: str = DEFAULT_BIND_HOST,
+        auth_token: str | None = None,
+    ):
         self.port = port
+        self.bind_host = bind_host
+        self.auth_token = get_auth_token(auth_token)
         self.socket_path = socket_path
         self.policy_path = policy_path
         self.server = None
@@ -383,7 +452,10 @@ class CortexServer:
             log.warning(f"⚠ Core not available at {self.socket_path} - running standalone")
         
         # Create gRPC server
-        self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=MAX_WORKERS))
+        self.server = grpc.server(
+            futures.ThreadPoolExecutor(max_workers=MAX_WORKERS),
+            interceptors=(CortexAuthInterceptor(self.auth_token),),
+        )
         
         # Initialize DNS Proxy
         self.dns_proxy = TelosDNSProxy(self.ipc)
@@ -398,12 +470,12 @@ class CortexServer:
         protocol_pb2_grpc.add_TelosControlServicer_to_server(service, self.server)
         
         # Bind to port
-        address = f'0.0.0.0:{self.port}'
+        address = f'{self.bind_host}:{self.port}'
         self.server.add_insecure_port(address)
         
         # Start
         self.server.start()
-        log.info(f"✓ gRPC server listening on port {self.port}")
+        log.info(f"✓ gRPC server listening on {address}")
         
         # [NEW Phase 11] Start the Heartbeat Watchdog Pulse
         self._heartbeat_thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
@@ -548,6 +620,12 @@ def main():
     parser = argparse.ArgumentParser(description='Telos Cortex - Central Control Server')
     parser.add_argument('--port', type=int, default=DEFAULT_PORT,
                         help=f'gRPC server port (default: {DEFAULT_PORT})')
+    parser.add_argument('--bind-host', type=str,
+                        default=os.getenv('TELOS_CORTEX_BIND_HOST', DEFAULT_BIND_HOST),
+                        help=f'gRPC bind host (default: {DEFAULT_BIND_HOST})')
+    parser.add_argument('--auth-token', type=str,
+                        default=os.getenv('TELOS_CORTEX_AUTH_TOKEN'),
+                        help='Cortex gRPC auth token (or set TELOS_CORTEX_AUTH_TOKEN)')
     parser.add_argument('--socket', type=str, default=DEFAULT_SOCKET,
                         help=f'Unix socket path for Core IPC (default: {DEFAULT_SOCKET})')
     parser.add_argument('--policy', type=str, 
@@ -562,7 +640,13 @@ def main():
         logging.getLogger().setLevel(logging.DEBUG)
     
     # Create and run server
-    server = CortexServer(args.port, args.socket, args.policy)
+    server = CortexServer(
+        args.port,
+        args.socket,
+        args.policy,
+        bind_host=args.bind_host,
+        auth_token=args.auth_token,
+    )
     
     # Register signal handlers
     signal.signal(signal.SIGINT, server.signal_handler)

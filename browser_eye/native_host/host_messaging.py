@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 try:
     import grpc
+    from cortex.auth import auth_metadata
     from shared import protocol_pb2, protocol_pb2_grpc
     GRPC_AVAILABLE = True
 except ImportError:
@@ -159,7 +160,11 @@ class CortexClient:
             
             # Non-blocking: fire and forget for responsiveness
             # In production, this should be async or queued
-            response = self.stub.ReportTaint(request, timeout=5.0)
+            response = self.stub.ReportTaint(
+                request,
+                timeout=5.0,
+                metadata=auth_metadata(),
+            )
             
             log.info(f"Taint reported: {level} at {url} -> {response.success}")
             return response.success
