@@ -5,6 +5,7 @@ Intercepts agent DNS queries, verifies intent, and dynamically opens the kernel 
 
 import socket
 import logging
+import struct
 import threading
 import dnslib
 from dnslib import DNSRecord, QTYPE, RR, A
@@ -24,6 +25,8 @@ class TelosDNSProxy:
         # Allow port reuse just in case
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.running = False
+        self._cleanup_timers = []
+        self._timer_lock = threading.Lock()
 
     def start(self):
         self.sock.bind((self.host, self.port))
@@ -34,6 +37,10 @@ class TelosDNSProxy:
 
     def stop(self):
         self.running = False
+        with self._timer_lock:
+            for timer in self._cleanup_timers:
+                timer.cancel()
+            self._cleanup_timers.clear()
         try:
             self.sock.close()
         except:
@@ -45,6 +52,21 @@ class TelosDNSProxy:
         In a full implementation, this populates an LRU cache or Redis.
         """
         log.info(f"[DNS] Authorized explicit intent for '{domain}' ({ttl_ms}ms)")
+
+    def _schedule_drawbridge_cleanup(self, ip_int, ip_str, domain, ttl_seconds):
+        """Schedule removal of a firewall rule after TTL expires."""
+        def cleanup():
+            self.ipc.remove_network_rule(ip_int)
+            log.info(f"[DNS] 🔒 Drawbridge raised for '{domain}' ({ip_str}) after {ttl_seconds}s TTL")
+            with self._timer_lock:
+                if timer in self._cleanup_timers:
+                    self._cleanup_timers.remove(timer)
+
+        timer = threading.Timer(ttl_seconds, cleanup)
+        timer.daemon = True
+        with self._timer_lock:
+            self._cleanup_timers.append(timer)
+        timer.start()
 
     def _listen(self):
         while self.running:
@@ -122,14 +144,17 @@ class TelosDNSProxy:
                     
                     # Convert IP string to 32-bit integer formatted for eBPF
                     packed = socket.inet_aton(ip_str)
-                    import struct
                     ip_int = struct.unpack("!I", packed)[0]
                     
+                    # Use DNS record TTL for drawbridge lifetime (default 60s)
+                    ttl_seconds = rr.ttl if rr.ttl > 0 else 60
+
                     # 🔥 THE DRAWBRIDGE 🔥
                     # Push the resolved IP down to the eBPF kernel map via IPC
                     success = self.ipc.add_network_rule(ip_int)
                     if success:
-                        log.info(f"[DNS] 🟢 ALLOWED: '{qname}' -> {ip_str} (Firewall hole punched)")
+                        log.info(f"[DNS] 🟢 ALLOWED: '{qname}' -> {ip_str} (Firewall hole punched, TTL: {ttl_seconds}s)")
+                        self._schedule_drawbridge_cleanup(ip_int, ip_str, qname, ttl_seconds)
                     else:
                         log.error(f"[DNS] ❌ IPC Failed to open firewall for {ip_str}")
 
