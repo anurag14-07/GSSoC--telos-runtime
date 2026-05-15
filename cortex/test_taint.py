@@ -9,12 +9,14 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import grpc
+from cortex.auth import auth_metadata
 from shared import protocol_pb2, protocol_pb2_grpc
 
 def main():
     # Connect to Cortex
     channel = grpc.insecure_channel('localhost:50051')
     stub = protocol_pb2_grpc.TelosControlStub(channel)
+    metadata = auth_metadata()
     
     print("╔═══════════════════════════════════════════════════════╗")
     print("║          TELOS Test - Simulating Taint Injection      ║")
@@ -36,7 +38,7 @@ def main():
     print()
     
     try:
-        response = stub.ReportTaint(request, timeout=5)
+        response = stub.ReportTaint(request, timeout=5, metadata=metadata)
         print(f"[←] Response:")
         print(f"    Success: {response.success}")
         print(f"    Message: {response.message}")

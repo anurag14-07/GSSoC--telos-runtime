@@ -3,6 +3,7 @@ import time
 import os
 import subprocess
 import grpc
+from cortex.auth import auth_metadata
 from shared import protocol_pb2, protocol_pb2_grpc
 
 CORTEX_ADDR = '127.0.0.1:50052'
@@ -11,9 +12,10 @@ def run():
     pid = os.getpid()
     channel = grpc.insecure_channel(CORTEX_ADDR)
     stub = protocol_pb2_grpc.TelosControlStub(channel)
+    metadata = auth_metadata()
 
     print(f"[*] Starting Telos Demo Agent (PID: {pid})")
-    stub.GetPolicy(protocol_pb2.PolicyQuery(pid=pid))
+    stub.GetPolicy(protocol_pb2.PolicyQuery(pid=pid), metadata=metadata)
     time.sleep(1)
 
     print("\n[+] SCENARIO 1: Authorized Intent (Download File)")
@@ -26,7 +28,7 @@ def run():
         planned_actions=[],
         planned_exec_actions=exec_actions
     )
-    stub.DeclareIntent(req)
+    stub.DeclareIntent(req, metadata=metadata)
     time.sleep(1.5)
 
     print("  -> Executing: curl (Should ALLOW)")
@@ -53,7 +55,7 @@ def run():
     )
     try:
         # The Cortex Verifier should instantly deny the `nc` execution due to LOLBin rules
-        stub.DeclareIntent(req)
+        stub.DeclareIntent(req, metadata=metadata)
     except Exception:
         pass
         

@@ -3,6 +3,7 @@ import time
 import os
 import subprocess
 import grpc
+from cortex.auth import auth_metadata
 from shared import protocol_pb2, protocol_pb2_grpc
 
 CORTEX_ADDR = '127.0.0.1:50052'
@@ -11,9 +12,10 @@ def run():
     pid = os.getpid()
     channel = grpc.insecure_channel(CORTEX_ADDR)
     stub = protocol_pb2_grpc.TelosControlStub(channel)
+    metadata = auth_metadata()
 
     print(f"[*] Starting Telos IFC Capstone Demo (PID: {pid})")
-    stub.GetPolicy(protocol_pb2.PolicyQuery(pid=pid))
+    stub.GetPolicy(protocol_pb2.PolicyQuery(pid=pid), metadata=metadata)
     time.sleep(1)
 
     print("\n[+] SCENARIO: The Deceptive Agent (IFC Exfiltration Test)")
@@ -66,7 +68,7 @@ def run():
     )
     
     print("  -> Declaring Intent: " + intent)
-    stub.DeclareIntent(req)
+    stub.DeclareIntent(req, metadata=metadata)
     
     # Wait for IPC to open the Network and Exec Gates
     time.sleep(1.0)

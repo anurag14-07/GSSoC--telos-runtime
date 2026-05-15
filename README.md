@@ -180,12 +180,22 @@ pip install -r cortex/requirements.txt
 ### Running Telos
 
 ```bash
+export TELOS_CORTEX_AUTH_TOKEN="$(python3 - <<'PY'
+import secrets
+print(secrets.token_urlsafe(32))
+PY
+)"
 sudo telos start    # Build and launch the full runtime
 sudo telos status   # Check system health
 sudo telos dash     # Launch the real-time Telemetry Dashboard
 sudo telos stop     # Gracefully stop all components
 telos help          # Display help
 ```
+
+The Cortex gRPC control plane binds to `127.0.0.1` by default and requires
+clients to include `TELOS_CORTEX_AUTH_TOKEN` as a bearer token in gRPC metadata.
+Only override the bind host for a remote deployment after adding a trusted
+network boundary.
 
 ---
 
@@ -195,6 +205,7 @@ telos help          # Display help
 
 ```bash
 sudo telos start
+export TELOS_CORTEX_AUTH_TOKEN="same-token-used-by-cortex"
 python3 demo_payload.py
 ```
 
@@ -210,6 +221,7 @@ python3 demo_payload.py
 
 ```bash
 sudo telos start
+export TELOS_CORTEX_AUTH_TOKEN="same-token-used-by-cortex"
 sudo python3 demo_ifc.py
 ```
 
