@@ -14,7 +14,7 @@ from shared import protocol_pb2, protocol_pb2_grpc
 
 def main():
     # Connect to Cortex
-    channel = grpc.insecure_channel('localhost:50051')
+    channel = grpc.insecure_channel('localhost:50052')
     stub = protocol_pb2_grpc.TelosControlStub(channel)
     metadata = auth_metadata()
     

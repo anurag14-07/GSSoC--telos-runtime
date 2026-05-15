@@ -42,10 +42,10 @@ def main():
     # Connect to Cortex
     print("[1/5] Connecting to Cortex...")
     try:
-        channel = grpc.insecure_channel('localhost:50051')
+        channel = grpc.insecure_channel('localhost:50052')
         stub = protocol_pb2_grpc.TelosControlStub(channel)
         metadata = auth_metadata()
-        print("      ✓ Connected to Cortex on port 50051")
+        print("      ✓ Connected to Cortex on port 50052")
     except Exception as e:
         print(f"      ✗ Failed to connect: {e}")
         return 1

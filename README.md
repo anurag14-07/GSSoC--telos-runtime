@@ -185,7 +185,7 @@ import secrets
 print(secrets.token_urlsafe(32))
 PY
 )"
-sudo telos start    # Build and launch the full runtime
+sudo -E telos start    # Build and launch the full runtime
 sudo telos status   # Check system health
 sudo telos dash     # Launch the real-time Telemetry Dashboard
 sudo telos stop     # Gracefully stop all components
@@ -204,7 +204,7 @@ network boundary.
 ### Demo 1: Execution Gate (LOLBin Defense)
 
 ```bash
-sudo telos start
+sudo -E telos start
 export TELOS_CORTEX_AUTH_TOKEN="same-token-used-by-cortex"
 python3 demo_payload.py
 ```
@@ -220,9 +220,9 @@ python3 demo_payload.py
 ### Demo 2: Information Flow Control (Network Slam)
 
 ```bash
-sudo telos start
+sudo -E telos start
 export TELOS_CORTEX_AUTH_TOKEN="same-token-used-by-cortex"
-sudo python3 demo_ifc.py
+sudo -E python3 demo_ifc.py
 ```
 
 **What happens:**
@@ -238,7 +238,7 @@ sudo python3 demo_ifc.py
 cd ~/code/hyperion-xdp && sudo ./bin/hyperion_ctrl -iface lo -telemetry
 
 # Terminal 2: Start Telos
-cd ~/code/telos-runtime && sudo telos start
+cd ~/code/telos-runtime && sudo -E telos start
 
 # Terminal 3: Query a typosquatted domain
 python3 -c "
