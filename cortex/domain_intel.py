@@ -21,7 +21,8 @@ import os
 import re
 import sqlite3
 import time
-from typing import Optional, Tuple, Dict, List
+from functools import lru_cache
+from typing import Optional, Tuple, Dict, List, Set
 
 log = logging.getLogger('telos.domain_intel')
 
@@ -175,22 +176,54 @@ class DomainIntel:
         self._watchlist = WATCHLIST
         self._intent_categories = INTENT_CATEGORIES
 
+        self._build_typosquat_index()
+
         count = self.conn.execute("SELECT COUNT(*) FROM domains").fetchone()[0]
         elapsed = (time.time() - t0) * 1000
         log.info("Domain Intelligence DB loaded: %d domains (%.1fms)", count, elapsed)
 
+    def _get_deletions(self, word: str, max_dist: int = 2) -> Set[str]:
+        """Generate all string deletions up to max_dist."""
+        deletes = {word}
+        queue = [word]
+        for _ in range(max_dist):
+            temp = []
+            for w in queue:
+                for i in range(len(w)):
+                    del_w = w[:i] + w[i+1:]
+                    if del_w not in deletes:
+                        deletes.add(del_w)
+                        temp.append(del_w)
+            queue = temp
+        return deletes
+
+    def _build_typosquat_index(self):
+        """Build O(1) SymSpell deletion dictionary for the watchlist."""
+        self._ts_index = {}
+        for watched in self._watchlist:
+            watched_root = _extract_root_domain(watched)
+            watch_base = watched_root.rsplit('.', 1)[0] if '.' in watched_root else watched_root
+            
+            for del_w in self._get_deletions(watched_root, max_dist=2):
+                self._ts_index.setdefault(del_w, set()).add(watched)
+                
+            for del_w in self._get_deletions(watch_base, max_dist=2):
+                self._ts_index.setdefault(del_w, set()).add(watched)
+
     def classify(self, domain: str, intent: str) -> Tuple[str, int, str]:
         """
         Classify a domain against an intent.
-
-        Returns:
-            (decision, score, reason)
-            decision: ALLOW / DENY / ESCALATE
-            score: 0-100 risk score
-            reason: human-readable explanation
+        Logs the decision and uses an LRU cache for high performance.
         """
-        domain = domain.lower().strip().rstrip('.')
-        intent_lower = intent.lower().strip()
+        domain_clean = domain.lower().strip().rstrip('.')
+        intent_clean = intent.lower().strip()
+        
+        decision, score, reason_str = self._compute_classification(domain_clean, intent_clean)
+        log.info("[DI] %s → %s (score=%d: %s)", domain_clean, decision, score, reason_str)
+        return decision, score, reason_str
+
+    @lru_cache(maxsize=4096)
+    def _compute_classification(self, domain: str, intent_lower: str) -> Tuple[str, int, str]:
         score = 0
         reasons = []
 
@@ -266,8 +299,6 @@ class DomainIntel:
             decision = ALLOW
 
         reason_str = "; ".join(reasons) if reasons else "clean"
-        log.info("[DI] %s → %s (score=%d: %s)", domain, decision, score, reason_str)
-
         return decision, score, reason_str
 
     def _get_allowed_categories(self, intent: str) -> set:
@@ -281,21 +312,33 @@ class DomainIntel:
     def _check_typosquat(self, domain: str) -> Optional[str]:
         """
         Check if domain is a typosquat of a watchlist domain.
-        Uses bounded Levenshtein + homoglyph normalization.
+        Uses O(1) SymSpell deletion index + bounded Levenshtein.
         Operates on root domain to defeat subdomain-squatting.
         """
         root = _extract_root_domain(domain)
         normalized = _normalize_homoglyphs(root)
+        norm_base = normalized.rsplit('.', 1)[0] if '.' in normalized else normalized
 
-        for watched in self._watchlist:
+        # Gather O(1) candidates from SymSpell index
+        candidates = set()
+        for del_w in self._get_deletions(normalized, max_dist=2):
+            if del_w in self._ts_index:
+                candidates.update(self._ts_index[del_w])
+                
+        for del_w in self._get_deletions(norm_base, max_dist=2):
+            if del_w in self._ts_index:
+                candidates.update(self._ts_index[del_w])
+
+        # Run exact Levenshtein only against candidates
+        for watched in candidates:
             watched_root = _extract_root_domain(watched)
+            
             # Compare root domains
             dist = _levenshtein(normalized, watched_root, max_dist=2)
             if 0 < dist <= 2:
                 return watched
 
-            # Compare base names (without TLD)
-            norm_base = normalized.rsplit('.', 1)[0] if '.' in normalized else normalized
+            # Compare base names
             watch_base = watched_root.rsplit('.', 1)[0] if '.' in watched_root else watched_root
             dist_base = _levenshtein(norm_base, watch_base, max_dist=2)
             if 0 < dist_base <= 1:
