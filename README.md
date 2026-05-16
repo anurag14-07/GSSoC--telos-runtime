@@ -192,6 +192,19 @@ sudo telos stop     # Gracefully stop all components
 telos help          # Display help
 ```
 
+### Web Telemetry Dashboard
+
+```bash
+python3 web_dashboard.py
+# Open http://127.0.0.1:8088
+
+# Optional: require a local bearer token
+TELOS_DASH_TOKEN=change-me python3 web_dashboard.py
+# Open http://127.0.0.1:8088/?token=change-me
+
+# Binding beyond localhost requires TELOS_DASH_TOKEN
+TELOS_DASH_TOKEN=change-me python3 web_dashboard.py --host 0.0.0.0
+```
 The Cortex gRPC control plane binds to `127.0.0.1` by default and requires
 clients to include `TELOS_CORTEX_AUTH_TOKEN` as a bearer token in gRPC metadata.
 Only override the bind host for a remote deployment after adding a trusted

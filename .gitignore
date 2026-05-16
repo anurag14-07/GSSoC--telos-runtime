@@ -23,6 +23,7 @@ secrets/
 .vscode/
 .idea/
 *.swp
+.DS_Store
 
 # Docker
 docker-compose.override.yml
