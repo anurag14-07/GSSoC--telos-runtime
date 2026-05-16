@@ -187,12 +187,22 @@ PY
 )"
 sudo -E telos start    # Build and launch the full runtime
 sudo telos status   # Check system health
-sudo telos dash     # Launch the real-time Telemetry Dashboard
+sudo telos dash     # Launch the terminal Telemetry Dashboard
+sudo telos webdash   # Launch the Web Telemetry Dashboard in a browser
 sudo telos stop     # Gracefully stop all components
 telos help          # Display help
 ```
 
 ### Web Telemetry Dashboard
+
+Use the built-in launcher command:
+
+```bash
+sudo telos webdash
+# Open http://127.0.0.1:8088
+```
+
+Or run the bridge directly:
 
 ```bash
 python3 web_dashboard.py

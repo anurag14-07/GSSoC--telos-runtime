@@ -64,7 +64,7 @@ def run():
         agent_pid=pid,
         natural_language_goal=intent,
         planned_actions=["8.8.8.8"],
-        planned_exec_actions=exec_actions,
+        planned_exec_actions=exec_actions
     )
 
     print("  -> Declaring Intent: " + intent)
@@ -75,10 +75,7 @@ def run():
 
     print(f"  -> Action 1: Executing `cat {mock_key}` (Should ALLOW but Taint -> CRITICAL)")
     try:
-        subprocess.run([
-            "cat",
-            mock_key,
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["cat", mock_key], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         print("     [x] WARNING: Agent successfully read the sensitive file!")
     except PermissionError:
         print("     [!] Telos blocked the read entirely (Preventative).")
@@ -88,7 +85,6 @@ def run():
     print("  -> Action 2: Opening socket to `8.8.8.8` (Should BLOCK due to IFC)")
     try:
         import urllib.request
-
         # We use a 2-second timeout so it doesn't hang if dropped
         urllib.request.urlopen("http://8.8.8.8/", timeout=2)
         print("     [x] WARNING: HTTP Request connected! IFC FAILED!")
@@ -97,17 +93,14 @@ def run():
     except Exception as e:
         # eBPF drops the packet (XDP/LSM Socket), causing an OS 'Operation not permitted'
         if "Operation not permitted" in str(e) or "EPERM" in str(e):
-            print(
-                "     [+] SUCCESS: HTTP connection failed: Operation not permitted. Network Slam active."
-            )
+            print("     [+] SUCCESS: HTTP connection failed: Operation not permitted. Network Slam active.")
         else:
             print(f"     [+] SUCCESS: connection failed! {e}. Network Slam active.")
 
     time.sleep(1)
     os.remove(mock_key)
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     if os.geteuid() != 0:
         print("Please run as root (sudo) so we can mock the sensitive inode access.")
         exit(1)

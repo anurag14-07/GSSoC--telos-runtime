@@ -24,7 +24,6 @@ from collections import deque
 from datetime import datetime
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
-
 EVENTS_SOCKET = "/var/run/telos_events.sock"
 CORTEX_LOG = "/tmp/telos_cortex.log"
 METRICS_URL = "http://127.0.0.1:9094/metrics"
@@ -37,7 +36,6 @@ BPF_BLOCK_ACTIONS = {
     "connect_denied",
     "connect_ipv6_denied",
 }
-
 
 class DashboardState:
     def __init__(self, max_events: int = MAX_EVENTS):
@@ -111,7 +109,6 @@ class DashboardState:
                 "stats": dict(self.stats),
             }
 
-
 def parse_prometheus_metrics(text: str):
     metrics = {}
     if not text:
@@ -131,10 +128,8 @@ def parse_prometheus_metrics(text: str):
                 continue
     return metrics
 
-
 def token_matches(value: str, token: str):
     return hmac.compare_digest(value, token)
-
 
 def cookie_token(headers):
     try:
@@ -143,7 +138,6 @@ def cookie_token(headers):
         return ""
     morsel = cookies.get("telos_dash_token")
     return morsel.value if morsel else ""
-
 
 def authorized(headers, path: str, token: str = ""):
     if not token:
@@ -155,8 +149,11 @@ def authorized(headers, path: str, token: str = ""):
 
     if token_matches(cookie_token(headers), token):
         return True
-    return False
 
+    parsed = urllib.parse.urlparse(path)
+    query = urllib.parse.parse_qs(parsed.query)
+    # SECURITY: Query token support is only for the initial browser auth cookie exchange.
+    return parsed.path in ("", "/") and token_matches(query.get("token", [""])[0], token)
 
 def has_query_token(path: str, token: str):
     if not token:
@@ -164,14 +161,12 @@ def has_query_token(path: str, token: str):
     query = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
     return token_matches(query.get("token", [""])[0], token)
 
-
 def strip_token_query(path: str):
     parsed = urllib.parse.urlparse(path)
     query = urllib.parse.parse_qs(parsed.query)
     query.pop("token", None)
     clean_query = urllib.parse.urlencode(query, doseq=True)
     return urllib.parse.urlunparse(parsed._replace(query=clean_query))
-
 
 def auth_cookie_header(token: str):
     cookie = http.cookies.SimpleCookie()
@@ -181,7 +176,6 @@ def auth_cookie_header(token: str):
     cookie["telos_dash_token"]["path"] = "/"
     return cookie.output(header="").strip()
 
-
 def redact_path(path: str):
     parsed = urllib.parse.urlparse(path)
     query = urllib.parse.parse_qs(parsed.query)
@@ -189,7 +183,6 @@ def redact_path(path: str):
         query["token"] = ["REDACTED"]
     clean_query = urllib.parse.urlencode(query, doseq=True)
     return urllib.parse.urlunparse(parsed._replace(query=clean_query))
-
 
 def is_loopback_host(host: str):
     if host in ("localhost",):
@@ -199,11 +192,9 @@ def is_loopback_host(host: str):
     except ValueError:
         return False
 
-
 def validate_bind_host(host: str, token: str):
     if not token and not is_loopback_host(host):
         raise SystemExit("Refusing non-loopback dashboard bind without TELOS_DASH_TOKEN")
-
 
 def stream_bpf_events(state: DashboardState, socket_path: str = EVENTS_SOCKET):
     while True:
@@ -220,7 +211,6 @@ def stream_bpf_events(state: DashboardState, socket_path: str = EVENTS_SOCKET):
             time.sleep(2)
         except Exception:
             time.sleep(2)
-
 
 def tail_cortex_log(state: DashboardState, log_path: str = CORTEX_LOG):
     while True:
@@ -240,7 +230,6 @@ def tail_cortex_log(state: DashboardState, log_path: str = CORTEX_LOG):
             time.sleep(5)
         except Exception:
             time.sleep(2)
-
 
 def make_handler(state: DashboardState, token: str, metrics_url: str = METRICS_URL):
     class DashboardHandler(SimpleHTTPRequestHandler):
@@ -268,6 +257,12 @@ def make_handler(state: DashboardState, token: str, metrics_url: str = METRICS_U
                 return
 
             parsed = urllib.parse.urlparse(self.path)
+            if token and has_query_token(self.path, token) and parsed.path in ("", "/"):
+                self.send_response(302)
+                self.send_header("Location", strip_token_query(self.path) or "/")
+                self.send_header("Set-Cookie", auth_cookie_header(token))
+                self.end_headers()
+                return
 
             if parsed.path == "/api/snapshot":
                 self._send_json(200, state.snapshot())
@@ -305,7 +300,6 @@ def make_handler(state: DashboardState, token: str, metrics_url: str = METRICS_U
 
     return DashboardHandler
 
-
 def main():
     parser = argparse.ArgumentParser(description="Telos Web Dashboard Bridge")
     parser.add_argument("--host", default="127.0.0.1", help="Host to bind (default: 127.0.0.1)")
@@ -326,7 +320,6 @@ def main():
     if token:
         print("Auth enabled via TELOS_DASH_TOKEN")
     server.serve_forever()
-
 
 if __name__ == "__main__":
     main()

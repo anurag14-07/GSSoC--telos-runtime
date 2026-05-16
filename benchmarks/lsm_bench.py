@@ -78,7 +78,7 @@ def main():
     for _ in range(100):
         try:
             subprocess.run(COMMAND, capture_output=True, timeout=1)
-        except:
+        except Exception:
             pass
     
     # Benchmark

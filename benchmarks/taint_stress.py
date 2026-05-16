@@ -60,7 +60,7 @@ def run_as_tainted_agent():
                 allowed += 1
         except PermissionError:
             blocked += 1
-        except:
+        except Exception:
             pass
     
     return {"pid": my_pid, "blocked": blocked, "allowed": allowed}
@@ -74,7 +74,8 @@ def run_clean():
             if result.returncode == 0:
                 successes += 1
         except:
-            pass
+            except Exception:
+                pass
     return successes
 
 def main():

@@ -39,8 +39,8 @@ def tail_cortex_log():
     """Tail Cortex log to find Intent declarations and verdicts."""
     try:
         # Standard tail -f logic
-        with open(CORTEX_LOG, "r") as f:
-            f.seek(0, 2)  # Go to end
+        with open(CORTEX_LOG, 'r') as f:
+            f.seek(0, 2) # Go to end
             while True:
                 line = f.readline()
                 if not line:
@@ -57,9 +57,7 @@ def tail_cortex_log():
                 elif "✅ Intent APPROVED" in line:
                     intent_events.appendleft(f"[green]Network Gate:[/green] OPEN")
                 elif "❌ Intent DENIED" in line:
-                    intent_events.appendleft(
-                        f"[red]Intent Denied:[/red] {line.split('DENIED:', 1)[-1].strip()}"
-                    )
+                    intent_events.appendleft(f"[red]Intent Denied:[/red] {line.split('DENIED:', 1)[-1].strip()}")
                 elif "[EI]" in line:
                     parts = line.split("[EI]", 1)[-1].strip()
                     if "ALLOW" in parts or "VERIFIED" in parts:
@@ -72,9 +70,7 @@ def tail_cortex_log():
                     bins = line.split("locked to:", 1)[-1].strip()
                     intent_events.appendleft(f"[bold cyan]Exec Gate:[/bold cyan] LOCKED {bins}")
                 elif "Exec Drawbridge locked COMPLETELY" in line:
-                    intent_events.appendleft(
-                        f"[bold red]Exec Gate:[/bold red] LOCKED COMPLETELY (Deny All)"
-                    )
+                    intent_events.appendleft(f"[bold red]Exec Gate:[/bold red] LOCKED COMPLETELY (Deny All)")
     except Exception as e:
         intent_events.appendleft(f"[red]Error tailing log: {e}[/red]")
 
@@ -84,7 +80,7 @@ def stream_bpf_events():
         try:
             client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             client.connect(EVENTS_SOCKET)
-            f = client.makefile("r")
+            f = client.makefile('r')
             bpf_events.appendleft("[dim]Connected to BPF Events Stream...[/dim]")
 
             for line in f:
@@ -92,9 +88,9 @@ def stream_bpf_events():
                     event = json.loads(line)
                     # { timestamp, pid, taint_level, action, desc }
 
-                    action = event.get("desc", "unknown")
-                    pid = event.get("pid", 0)
-                    taint = event.get("taint_level", 0)
+                    action = event.get('desc', 'unknown')
+                    pid = event.get('pid', 0)
+                    taint = event.get('taint_level', 0)
 
                     # Formatting based on event type
                     if action == "exec_denied":
@@ -136,9 +132,12 @@ def generate_layout() -> Layout:
     layout.split_column(
         Layout(name="header", size=3),
         Layout(name="body"),
-        Layout(name="footer", size=3),
+        Layout(name="footer", size=3)
     )
-    layout["body"].split_row(Layout(name="left", ratio=1), Layout(name="right", ratio=1))
+    layout["body"].split_row(
+        Layout(name="left", ratio=1),
+        Layout(name="right", ratio=1)
+    )
     return layout
 
 def get_intents_panel() -> Panel:
@@ -147,7 +146,7 @@ def get_intents_panel() -> Panel:
         Text.from_markup(text),
         title="[bold cyan]Cortex AI Control Plane (Intents & Network)[/bold cyan]",
         border_style="cyan",
-        box=box.ROUNDED,
+        box=box.ROUNDED
     )
 
 def get_bpf_panel() -> Panel:
@@ -156,7 +155,7 @@ def get_bpf_panel() -> Panel:
         Text.from_markup(text),
         title="[bold green]eBPF Kernel Data Plane (Execution Enforcements)[/bold green]",
         border_style="green",
-        box=box.ROUNDED,
+        box=box.ROUNDED
     )
 
 def get_header() -> Panel:
@@ -167,7 +166,7 @@ def get_header() -> Panel:
     grid.add_row(
         "Dual-Gate Architecture",
         "[bold magenta]TELOS TELEMETRY DASHBOARD[/bold magenta]",
-        datetime.now().strftime("%c"),
+        datetime.now().strftime("%c")
     )
     return Panel(grid, style="white on black", box=box.SIMPLE)
 
@@ -194,7 +193,6 @@ def main():
                 time.sleep(0.1)
             except KeyboardInterrupt:
                 break
-
 
 if __name__ == "__main__":
     main()

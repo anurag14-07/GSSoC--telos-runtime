@@ -104,8 +104,10 @@ def main():
             try:
                 ok, _, lat = _call(stub, 10000+i, "Search for information", domain, f"t1-{i}")
                 lats.append(lat)
-                if not ok: errs += 1
-            except: errs += 1
+                if not ok:
+                    errs += 1
+            except Exception as e:
+                errs += 1
         p50, p95, p99 = _pct(lats)
         t1_pass = len(lats) == 200 and errs == 0 and p99 < 50
         w(f, f"  Queries: {len(lats)}  Errors: {errs}")
@@ -127,9 +129,12 @@ def main():
             try:
                 ok, reason, lat = _call(stub, 20000+i, "Check server status", domain, f"t2-{i}")
                 lats2.append(lat)
-                if ok: allowed += 1
-                else: denied += 1
-            except: pass
+                if ok:
+                    allowed += 1
+                else:
+                    denied += 1
+            except Exception:
+                pass
         p50, p95, p99 = _pct(lats2)
         t2_pass = len(lats2) > 0
         w(f, f"  Queries: {len(lats2)}  Denied: {denied}  Allowed(LLM): {allowed}")
@@ -196,7 +201,8 @@ def main():
                     missed += 1
                     if len(missed_list) < 10:
                         missed_list.append(fuzzed)
-            except: pass
+            except Exception:
+                pass
         total = detected + missed
         accuracy = (detected / total * 100) if total else 0
         p50, p95, _ = _pct(t4_lats)
@@ -235,7 +241,8 @@ def main():
                     lat_t.append(lat); cnt["td" if not ok else "tl"] += 1
                 else:
                     lat_u.append(lat); cnt["ud" if not ok else "ua"] += 1
-            except: pass
+            except Exception:
+                pass
 
         kp50, kp95, kp99 = _pct(lat_k)
         tp50, tp95, _ = _pct(lat_t)

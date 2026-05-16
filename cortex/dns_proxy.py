@@ -43,8 +43,8 @@ class TelosDNSProxy:
             self._cleanup_timers.clear()
         try:
             self.sock.close()
-        except:
-            pass
+        except Exception as e:
+            log.debug(f"Error closing DNS socket: {e}")
 
     def allow_domain(self, domain: str, ttl_ms: int):
         """

@@ -67,7 +67,7 @@ def taint_updater():
                 )
                 stub.ReportTaint(taint, timeout=0.1)
                 updates += 1
-            except:
+            except Exception:
                 pass
             time.sleep(1.0 / TAINT_UPDATE_RATE)
         
@@ -130,7 +130,7 @@ def main():
                 spawn_during_taint += 1
         except PermissionError:
             blocked_during_taint += 1
-        except:
+        except Exception:
             pass
     
     taint_thread.join()
@@ -154,7 +154,7 @@ def main():
             try:
                 subprocess.run(["/bin/true"], timeout=0.5)
                 fork_count += 1
-            except:
+            except Exception:
                 pass
     
     threads = [threading.Thread(target=controlled_fork) for _ in range(8)]
