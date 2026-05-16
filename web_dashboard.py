@@ -9,6 +9,7 @@ Serves a static browser dashboard and bridges existing local telemetry sources:
 """
 
 import argparse
+import hmac
 import http.cookies
 import ipaddress
 import json
@@ -29,6 +30,13 @@ CORTEX_LOG = "/tmp/telos_cortex.log"
 METRICS_URL = "http://127.0.0.1:9094/metrics"
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web_dashboard")
 MAX_EVENTS = 100
+BPF_BLOCK_ACTIONS = {
+    "exec_denied",
+    "exec_tainted",
+    "exfil_blocked",
+    "connect_denied",
+    "connect_ipv6_denied",
+}
 
 
 class DashboardState:
@@ -55,7 +63,7 @@ class DashboardState:
         }
 
         with self.lock:
-            if action in ("exec_denied", "exec_tainted", "exfil_blocked", "connect_denied", "connect_ipv6_denied"):
+            if item["blocked"] or action in BPF_BLOCK_ACTIONS:
                 self.stats["denied"] += 1
             if action == "taint_elevate":
                 self.stats["elevated"] += 1
@@ -82,8 +90,6 @@ class DashboardState:
         with self.lock:
             if item["type"] == "approved":
                 self.stats["allowed"] += 1
-            elif item["type"] == "denied":
-                self.stats["denied"] += 1
             self.intent_events.appendleft(item)
 
     def add_bridge_error(self, message: str):
@@ -126,29 +132,41 @@ def parse_prometheus_metrics(text: str):
     return metrics
 
 
+def token_matches(value: str, token: str):
+    return hmac.compare_digest(value, token)
+
+
+def cookie_token(headers):
+    try:
+        cookies = http.cookies.SimpleCookie(headers.get("Cookie", ""))
+    except http.cookies.CookieError:
+        return ""
+    morsel = cookies.get("telos_dash_token")
+    return morsel.value if morsel else ""
+
+
 def authorized(headers, path: str, token: str = ""):
     if not token:
         return True
 
     auth_header = headers.get("Authorization", "")
-    if auth_header == f"Bearer {token}":
+    if auth_header.startswith("Bearer ") and token_matches(auth_header[7:], token):
         return True
 
-    cookies = http.cookies.SimpleCookie(headers.get("Cookie", ""))
-    if cookies.get("telos_dash_token") and cookies["telos_dash_token"].value == token:
+    if token_matches(cookie_token(headers), token):
         return True
 
     parsed = urllib.parse.urlparse(path)
     query = urllib.parse.parse_qs(parsed.query)
     # SECURITY: Query token support is only for the initial browser auth cookie exchange.
-    return parsed.path in ("", "/") and query.get("token", [""])[0] == token
+    return parsed.path in ("", "/") and token_matches(query.get("token", [""])[0], token)
 
 
 def has_query_token(path: str, token: str):
     if not token:
         return False
     query = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
-    return query.get("token", [""])[0] == token
+    return token_matches(query.get("token", [""])[0], token)
 
 
 def strip_token_query(path: str):

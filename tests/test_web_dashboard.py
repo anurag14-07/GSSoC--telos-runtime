@@ -43,7 +43,7 @@ class DashboardStateTest(unittest.TestCase):
         self.assertEqual(snapshot["stats"]["elevated"], 1)
         self.assertEqual(len(snapshot["bpf_events"]), 2)
 
-    def test_tracks_intent_approval_and_denial(self):
+    def test_tracks_intent_approval_without_counting_denials_as_bpf_blocks(self):
         state = DashboardState()
 
         state.add_intent_line("2026 [INFO] telos.cortex: Intent APPROVED: ok")
@@ -51,7 +51,7 @@ class DashboardStateTest(unittest.TestCase):
 
         snapshot = state.snapshot()
         self.assertEqual(snapshot["stats"]["allowed"], 1)
-        self.assertEqual(snapshot["stats"]["denied"], 1)
+        self.assertEqual(snapshot["stats"]["denied"], 0)
         self.assertEqual(len(snapshot["intent_events"]), 2)
 
     def test_bridge_errors_do_not_increment_denied_stats(self):
@@ -92,6 +92,9 @@ class DashboardHelpersTest(unittest.TestCase):
 
     def test_authorized_accepts_bearer_token(self):
         self.assertTrue(authorized({"Authorization": "Bearer secret"}, "/api/snapshot", "secret"))
+
+    def test_authorized_rejects_wrong_cookie_token(self):
+        self.assertFalse(authorized({"Cookie": "telos_dash_token=wrong"}, "/api/snapshot", "secret"))
 
     def test_authorized_rejects_query_token_for_api_routes(self):
         self.assertFalse(authorized({}, "/api/events?token=secret", "secret"))
